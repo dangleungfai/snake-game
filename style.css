@@ -1,0 +1,358 @@
+/* ========== 基础与页面布局 ========== */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+:root {
+  --bg: #0f1419;
+  --surface: #1a2332;
+  --border: #2d3a4f;
+  --text: #e8edf4;
+  --muted: #8b9cb3;
+  --accent: #3d9cfd;
+  --accent-hover: #5eb0ff;
+  --snake: #4ade80;
+  --snake-head: #22c55e;
+  --food: #f87171;
+  --cell: #243044;
+  --radius: 12px;
+  --shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  background: radial-gradient(ellipse 120% 80% at 50% -20%, #1e3a5f 0%, var(--bg) 55%);
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+}
+
+/* ========== 主容器：居中、卡片感 ========== */
+.app {
+  width: 100%;
+  max-width: 520px;
+  text-align: center;
+}
+
+.app__header {
+  margin-bottom: 1.25rem;
+}
+
+.app__title {
+  margin: 0 0 0.35rem;
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.app__subtitle {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+/* ========== 分数与按钮 ========== */
+.panel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem 1.5rem;
+  margin-bottom: 1rem;
+  padding: 0.75rem 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.panel__stats {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.panel__label {
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.panel__score {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--accent);
+  min-width: 2ch;
+}
+
+.panel__speed {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.panel__speed-btns {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.panel__actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.btn {
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.1s ease;
+}
+
+.btn:active {
+  transform: scale(0.98);
+}
+
+.btn--primary {
+  background: var(--accent);
+  color: #0a1628;
+}
+
+.btn--primary:hover {
+  background: var(--accent-hover);
+}
+
+.btn--secondary {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.btn--secondary:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--muted);
+}
+
+/** 速度档位：描边按钮，当前档位高亮 */
+.btn--ghost {
+  padding: 0.4rem 0.65rem;
+  font-size: 0.8rem;
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border);
+}
+
+.btn--ghost:hover {
+  color: var(--text);
+  border-color: var(--muted);
+}
+
+.btn--speed.is-active {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: rgba(61, 156, 253, 0.12);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* ========== 游戏结束横幅 ========== */
+.game-over {
+  margin-bottom: 0.75rem;
+  padding: 0.6rem 1rem;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #fecaca;
+  background: rgba(248, 113, 113, 0.15);
+  border: 1px solid rgba(248, 113, 113, 0.4);
+  border-radius: 8px;
+}
+
+.game-over[hidden] {
+  display: none !important;
+}
+
+/* ========== 游戏网格：20×20，由 JS 注入 .game-board__cell ========== */
+.game-board {
+  display: grid;
+  grid-template-columns: repeat(20, 1fr);
+  grid-template-rows: repeat(20, 1fr);
+  gap: 2px;
+  width: min(92vw, 400px);
+  aspect-ratio: 1;
+  margin: 0 auto;
+  padding: 6px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.game-board__cell {
+  background: var(--cell);
+  border-radius: 3px;
+  transition: background 0.08s ease;
+  /** 蛇头用伪元素画眼睛、吻部，需相对定位 */
+  position: relative;
+}
+
+.game-board__cell--snake {
+  background: var(--snake);
+}
+
+/**
+ * 蛇头：略大的圆角 + 朝向对应的「吻部」与双眼
+ * 朝向由 JS 根据当前移动方向添加 --face-* 修饰 class
+ */
+.game-board__cell--head {
+  z-index: 1;
+  background: var(--snake-head);
+  border-radius: 40%;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.2),
+    0 0 0 1px rgba(21, 128, 61, 0.5);
+}
+
+.game-board__cell--head::before,
+.game-board__cell--head::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+}
+
+/** 双眼：白底 + 深色小瞳孔 */
+.game-board__cell--head::before {
+  width: 22%;
+  height: 22%;
+  border-radius: 50%;
+  background: radial-gradient(circle at 45% 42%, #1a1a1a 28%, #fff 32%);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.12);
+}
+
+/** 吻部：深绿色凸起，贴在前进方向一侧 */
+.game-board__cell--head::after {
+  background: #15803d;
+  border-radius: 50%;
+}
+
+/* 向右：眼在左，吻在右 */
+.game-board__cell--head.game-board__cell--face-right::before {
+  box-shadow: none;
+  background:
+    radial-gradient(circle at 40% 35%, #1a1a1a 30%, #fff 35%),
+    radial-gradient(circle at 40% 65%, #1a1a1a 30%, #fff 35%);
+  background-repeat: no-repeat;
+  background-size: 100% 50%, 100% 50%;
+  background-position: center top, center bottom;
+  width: 26%;
+  height: 55%;
+  left: 10%;
+  top: 22%;
+  border-radius: 0;
+  background-color: transparent;
+}
+
+.game-board__cell--head.game-board__cell--face-right::after {
+  right: -6%;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 42%;
+  height: 48%;
+  border-radius: 0 55% 55% 0;
+}
+
+/* 向左 */
+.game-board__cell--head.game-board__cell--face-left::before {
+  background:
+    radial-gradient(circle at 60% 35%, #1a1a1a 30%, #fff 35%),
+    radial-gradient(circle at 60% 65%, #1a1a1a 30%, #fff 35%);
+  background-repeat: no-repeat;
+  background-size: 100% 50%, 100% 50%;
+  background-position: center top, center bottom;
+  width: 26%;
+  height: 55%;
+  right: 10%;
+  left: auto;
+  top: 22%;
+  border-radius: 0;
+  background-color: transparent;
+}
+
+.game-board__cell--head.game-board__cell--face-left::after {
+  left: -6%;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 42%;
+  height: 48%;
+  border-radius: 55% 0 0 55%;
+}
+
+/* 向上 */
+.game-board__cell--head.game-board__cell--face-up::before {
+  background:
+    radial-gradient(circle at 35% 55%, #1a1a1a 30%, #fff 35%),
+    radial-gradient(circle at 65% 55%, #1a1a1a 30%, #fff 35%);
+  background-repeat: no-repeat;
+  background-size: 50% 100%, 50% 100%;
+  background-position: left center, right center;
+  width: 55%;
+  height: 26%;
+  left: 22%;
+  bottom: 10%;
+  top: auto;
+  border-radius: 0;
+  background-color: transparent;
+}
+
+.game-board__cell--head.game-board__cell--face-up::after {
+  left: 50%;
+  top: -6%;
+  transform: translateX(-50%);
+  width: 48%;
+  height: 42%;
+  border-radius: 55% 55% 0 0;
+}
+
+/* 向下 */
+.game-board__cell--head.game-board__cell--face-down::before {
+  background:
+    radial-gradient(circle at 35% 45%, #1a1a1a 30%, #fff 35%),
+    radial-gradient(circle at 65% 45%, #1a1a1a 30%, #fff 35%);
+  background-repeat: no-repeat;
+  background-size: 50% 100%, 50% 100%;
+  background-position: left center, right center;
+  width: 55%;
+  height: 26%;
+  left: 22%;
+  top: 10%;
+  border-radius: 0;
+  background-color: transparent;
+}
+
+.game-board__cell--head.game-board__cell--face-down::after {
+  left: 50%;
+  bottom: -6%;
+  top: auto;
+  transform: translateX(-50%);
+  width: 48%;
+  height: 42%;
+  border-radius: 0 0 55% 55%;
+}
+
+.game-board__cell--food {
+  background: var(--food);
+  box-shadow: 0 0 10px rgba(248, 113, 113, 0.45);
+}
