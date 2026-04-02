@@ -2,50 +2,65 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>贪吃蛇 — 演示版</title>
-  <!-- 样式独立文件，便于维护与讲解 -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>贪吃蛇</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <main class="app">
-    <header class="app__header">
-      <h1 class="app__title">贪吃蛇</h1>
-      <p class="app__subtitle">方向键控制 · 吃食物得分 · 撞墙或撞到自己则结束</p>
+  <div class="app">
+    <header class="header">
+      <h1 class="title">贪吃蛇</h1>
+      <p class="subtitle">方向键或 WASD 移动 · 空格暂停</p>
     </header>
 
-    <section class="panel" aria-label="游戏信息与控制">
-      <div class="panel__stats">
-        <span class="panel__label">当前分数</span>
-        <span id="scoreDisplay" class="panel__score">0</span>
+    <div class="speed-bar" id="speed-bar">
+      <span class="speed-bar__label">移动速度</span>
+      <div class="speed-bar__controls">
+        <button type="button" id="btn-speed-down" class="btn-speed" aria-label="减慢">−</button>
+        <span id="speed-label" class="speed-bar__value">标准</span>
+        <button type="button" id="btn-speed-up" class="btn-speed" aria-label="加快">+</button>
       </div>
-      <div class="panel__speed" aria-label="移动速度">
-        <span class="panel__label">速度</span>
-        <div class="panel__speed-btns" role="group">
-          <button type="button" class="btn btn--ghost btn--speed" data-speed-index="0">慢</button>
-          <button type="button" class="btn btn--ghost btn--speed" data-speed-index="1">中</button>
-          <button type="button" class="btn btn--ghost btn--speed" data-speed-index="2">快</button>
-        </div>
+    </div>
+
+    <section class="stats">
+      <div class="stat-card">
+        <span class="stat-label">当前分数</span>
+        <span id="score" class="stat-value">0</span>
       </div>
-      <div class="panel__actions">
-        <button type="button" id="btnStart" class="btn btn--primary">开始游戏</button>
-        <button type="button" id="btnRestart" class="btn btn--secondary">重新开始</button>
+      <div class="stat-card stat-card--accent">
+        <span class="stat-label">最高分数</span>
+        <span id="high-score" class="stat-value">0</span>
       </div>
     </section>
 
-    <!-- 游戏结束提示：默认隐藏，由 JS 控制显示 -->
-    <div id="gameOverBanner" class="game-over" hidden role="alert">
-      游戏结束
+    <div class="board-wrap">
+      <canvas id="game-canvas" width="400" height="400" aria-label="游戏区域"></canvas>
     </div>
 
-    <!-- 20×20 网格由 script.js 动态生成单元格 -->
-    <div
-      id="gameBoard"
-      class="game-board"
-      role="grid"
-      aria-label="游戏区域，二十乘二十格"
-    ></div>
-  </main>
+    <div class="controls controls--primary">
+      <button type="button" id="btn-start" class="btn btn-primary">开始游戏</button>
+      <button type="button" id="btn-pause" class="btn btn-secondary" disabled>暂停</button>
+      <button type="button" id="btn-restart" class="btn btn-outline">重新开始</button>
+    </div>
+
+    <!-- 移动端方向控制 -->
+    <div class="touch-pad" id="touch-pad" aria-hidden="true">
+      <button type="button" class="touch-btn touch-up" data-dir="up" aria-label="上">▲</button>
+      <div class="touch-row">
+        <button type="button" class="touch-btn touch-left" data-dir="left" aria-label="左">◀</button>
+        <button type="button" class="touch-btn touch-down" data-dir="down" aria-label="下">▼</button>
+        <button type="button" class="touch-btn touch-right" data-dir="right" aria-label="右">▶</button>
+      </div>
+    </div>
+
+    <div id="overlay" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="overlay-title">
+      <div class="overlay-card">
+        <h2 id="overlay-title" class="overlay-title">游戏结束</h2>
+        <p id="overlay-message" class="overlay-message">再试一次吧！</p>
+        <button type="button" id="overlay-restart" class="btn btn-primary">再来一局</button>
+      </div>
+    </div>
+  </div>
 
   <script src="script.js"></script>
 </body>
