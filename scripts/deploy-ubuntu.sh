@@ -1,51 +1,46 @@
 #!/usr/bin/env bash
 #
-# Ubuntu 20.04+ / 24.04 一键部署：通过 apt 安装 Nginx、Git 等，拉取本仓库并配置站点。
-# 用法（在服务器上）：
-#   curl -fsSL https://raw.githubusercontent.com/dangleungfai/snake-game/main/scripts/deploy-ubuntu.sh -o deploy-ubuntu.sh
-#   chmod +x deploy-ubuntu.sh
-#   sudo ./deploy-ubuntu.sh
+# Ubuntu 24.04 一键部署：apt 安装 Nginx、Git、证书、curl、UFW，拉取仓库并配置站点。
+# 结束后仅在终端输出「访问链接」一行（HTTPS 模式输出 https://域名/）。
 #
-# 或克隆仓库后：
-#   cd snake-game && sudo ./scripts/deploy-ubuntu.sh
+#   curl -fsSL https://raw.githubusercontent.com/dangleungfai/snake-game/main/scripts/deploy-ubuntu.sh -o deploy-ubuntu.sh
+#   chmod +x deploy-ubuntu.sh && sudo ./deploy-ubuntu.sh
 #
 set -euo pipefail
 
-# ---------- 默认参数（可用环境变量或命令行覆盖）----------
 REPO_URL="${REPO_URL:-https://github.com/dangleungfai/snake-game.git}"
 WEB_ROOT="${WEB_ROOT:-/var/www/snake-game}"
 SERVER_NAME="${SERVER_NAME:-_}"
 NGINX_SITE="${NGINX_SITE:-snake-game}"
-WITH_UFW="${WITH_UFW:-0}"
 WITH_SSL="${WITH_SSL:-0}"
 DOMAIN="${DOMAIN:-}"
 EMAIL="${EMAIL:-}"
+SKIP_UFW="${SKIP_UFW:-0}"
 
 usage() {
   cat <<'EOF'
-一键部署 snake-game 到 Ubuntu（Nginx + 可选 UFW / HTTPS）
+Ubuntu 24.04 一键部署 snake-game（默认安装 Nginx、Git、CA 证书、curl、UFW 并放行端口）
 
 用法:
-  sudo ./scripts/deploy-ubuntu.sh [选项]
+  sudo ./deploy-ubuntu.sh [选项]
 
-参数说明：
-  --repo URL          Git 仓库地址（默认官方仓库 HTTPS）
-  --web-root PATH     站点根目录（默认 /var/www/snake-game）
-  --server-name NAME  Nginx server_name（默认 _，任意 Host/IP 可访问）
-  --with-ufw          安装并配置 UFW：放行 SSH、HTTP（若启用 SSL 则再放行 HTTPS）
-  --with-ssl          安装 Certbot 并申请证书（需同时指定 --domain 与 --email）
-  --domain FQDN       域名（与 DNS 指向本机公网 IP，供 --with-ssl）
-  --email ADDR        Let's Encrypt 联系邮箱（供 --with-ssl）
-  -h, --help          显示帮助
+选项:
+  --repo URL           Git 仓库（默认官方 HTTPS）
+  --web-root PATH      站点目录（默认 /var/www/snake-game）
+  --server-name NAME   Nginx server_name（默认 _，适合用 IP 访问）
+  --skip-ufw           不安装/不启用 UFW（仅用云安全组时可加）
+  --with-ssl           启用 HTTPS（须同时 --domain 与 --email）
+  --domain FQDN        域名（须解析到本机公网 IP）
+  --email ADDR         Let's Encrypt 邮箱
+  -h, --help           帮助
 
-示例：
-  sudo ./scripts/deploy-ubuntu.sh
-  sudo ./scripts/deploy-ubuntu.sh --with-ufw
-  sudo ./scripts/deploy-ubuntu.sh --with-ssl --domain game.example.com --email you@example.com
+示例:
+  sudo ./deploy-ubuntu.sh
+  sudo ./deploy-ubuntu.sh --skip-ufw
+  sudo ./deploy-ubuntu.sh --with-ssl --domain game.example.com --email you@example.com
 EOF
 }
 
-# ---------- 解析命令行 ----------
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --repo)
@@ -60,8 +55,8 @@ while [[ $# -gt 0 ]]; do
       SERVER_NAME="$2"
       shift 2
       ;;
-    --with-ufw)
-      WITH_UFW=1
+    --skip-ufw)
+      SKIP_UFW=1
       shift
       ;;
     --with-ssl)
@@ -81,54 +76,52 @@ while [[ $# -gt 0 ]]; do
       exit 0
       ;;
     *)
-      echo "未知参数: $1 （使用 --help 查看说明）" >&2
+      echo "未知参数: $1" >&2
       exit 1
       ;;
   esac
 done
 
 if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
-  echo "请使用 root 或 sudo 运行，例如: sudo $0" >&2
+  echo "请使用 sudo 运行" >&2
   exit 1
 fi
 
 if [[ "$WITH_SSL" -eq 1 ]]; then
   if [[ -z "$DOMAIN" || -z "$EMAIL" ]]; then
-    echo "使用 --with-ssl 时必须同时提供 --domain 与 --email。" >&2
+    echo "--with-ssl 需要同时指定 --domain 与 --email" >&2
     exit 1
   fi
   SERVER_NAME="$DOMAIN"
 fi
 
-echo "==> 更新 apt 索引并安装依赖包：nginx、git、ca-certificates"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -y
-apt-get install -y nginx git ca-certificates
+apt-get install -y nginx git ca-certificates curl
 
-echo "==> 确保 Nginx 开机自启"
+if [[ "$SKIP_UFW" -eq 0 ]]; then
+  apt-get install -y ufw
+  ufw allow OpenSSH
+  ufw allow 'Nginx HTTP'
+  [[ "$WITH_SSL" -eq 1 ]] && ufw allow 'Nginx HTTPS'
+  ufw --force enable
+fi
+
 systemctl enable nginx
 systemctl start nginx
 
-install_or_update_site_files() {
-  if [[ -d "${WEB_ROOT}/.git" ]]; then
-    echo "==> 检测到已有 Git 仓库，执行 git pull"
-    git -C "$WEB_ROOT" pull --ff-only
-  elif [[ -f "${WEB_ROOT}/index.html" ]]; then
-    echo "==> 目录已存在 index.html，跳过克隆。若需从远程覆盖，请删除 ${WEB_ROOT} 后重跑脚本。"
-  else
-    echo "==> 克隆仓库到 ${WEB_ROOT}"
-    mkdir -p "$(dirname "$WEB_ROOT")"
-    git clone --depth 1 "$REPO_URL" "$WEB_ROOT"
-  fi
-}
+if [[ -d "${WEB_ROOT}/.git" ]]; then
+  git -C "$WEB_ROOT" pull --ff-only
+elif [[ -f "${WEB_ROOT}/index.html" ]]; then
+  :
+else
+  mkdir -p "$(dirname "$WEB_ROOT")"
+  git clone --depth 1 "$REPO_URL" "$WEB_ROOT"
+fi
 
-install_or_update_site_files
-
-echo "==> 设置目录权限（www-data）"
 chown -R www-data:www-data "$WEB_ROOT"
 chmod -R u=rwX,g=rX,o=rX "$WEB_ROOT"
 
-echo "==> 写入 Nginx 站点: /etc/nginx/sites-available/${NGINX_SITE}"
 cat >"/etc/nginx/sites-available/${NGINX_SITE}" <<NGX
 server {
     listen 80;
@@ -144,42 +137,30 @@ server {
 }
 NGX
 
-echo "==> 启用站点并移除默认站点（若存在）"
 ln -sf "/etc/nginx/sites-available/${NGINX_SITE}" "/etc/nginx/sites-enabled/${NGINX_SITE}"
 rm -f /etc/nginx/sites-enabled/default
-
-echo "==> 校验并重载 Nginx"
 nginx -t
 systemctl reload nginx
 
-if [[ "$WITH_UFW" -eq 1 ]]; then
-  echo "==> 安装并配置 UFW（放行 SSH、HTTP）"
-  apt-get install -y ufw
-  ufw allow OpenSSH
-  ufw allow 'Nginx HTTP'
-  if [[ "$WITH_SSL" -eq 1 ]]; then
-    ufw allow 'Nginx HTTPS' || true
-  fi
-  ufw --force enable || true
-  ufw status verbose || true
-fi
-
 if [[ "$WITH_SSL" -eq 1 ]]; then
-  echo "==> 安装 Certbot 并申请 HTTPS 证书"
   apt-get install -y certbot python3-certbot-nginx
-  certbot --nginx \
-    -d "$DOMAIN" \
-    -m "$EMAIL" \
-    --agree-tos \
-    --non-interactive \
-    --redirect
+  certbot --nginx -d "$DOMAIN" -m "$EMAIL" --agree-tos --non-interactive --redirect
 fi
 
-echo ""
-echo "部署完成。请用浏览器访问："
+# ---------- 仅输出访问链接 ----------
 if [[ "$WITH_SSL" -eq 1 ]]; then
-  echo "  https://${DOMAIN}/"
+  printf '访问链接: https://%s/\n' "$DOMAIN"
 else
-  echo "  http://<服务器公网IP>/  （若 server_name 为 _，用 IP 即可）"
+  PUBLIC_IP=""
+  for url in https://api.ipify.org https://ifconfig.me/ip; do
+    PUBLIC_IP=$(curl -fsSL --max-time 6 "$url" 2>/dev/null | tr -d '[:space:]' || true)
+    [[ -n "$PUBLIC_IP" ]] && break
+  done
+  if [[ -z "$PUBLIC_IP" ]]; then
+    PUBLIC_IP=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for (i = 1; i <= NF; i++) if ($i == "src") { print $(i + 1); exit }}' || true)
+  fi
+  if [[ -z "$PUBLIC_IP" ]]; then
+    PUBLIC_IP=$(hostname -I 2>/dev/null | awk '{print $1}' || echo "你的服务器公网IP")
+  fi
+  printf '访问链接: http://%s/\n' "$PUBLIC_IP"
 fi
-echo "站点根目录: ${WEB_ROOT}"
