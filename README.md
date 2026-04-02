@@ -14,6 +14,8 @@
 
 **结论：** 本地用浏览器直接打开 `index.html` 时，**无需执行任何安装依赖的命令**。
 
+**部署到 Ubuntu 24.04 服务器时：** 游戏本身仍无 npm/pip 依赖；对外提供服务通常只需通过 `apt` 安装 **Nginx**（可选 **Git**、**Certbot** 等），详见下文 **「方式 D：Ubuntu 24.04 服务器 + Nginx」**。
+
 ---
 
 ## 代码架构
@@ -22,10 +24,12 @@
 
 ```
 snake-game/
-├── index.html    # 页面结构：标题、分数、速度按钮、开始/重新开始、游戏结束提示、棋盘容器
-├── style.css     # 布局与主题：居中面板、20×20 网格、蛇身/蛇头（含朝向与五官）、食物、按钮状态
-├── script.js     # 游戏状态机、定时步进、键盘输入、DOM 渲染
-└── README.md     # 本说明文档
+├── index.html              # 页面结构：标题、分数、速度按钮、开始/重新开始、游戏结束提示、棋盘容器
+├── style.css               # 布局与主题：居中面板、20×20 网格、蛇身/蛇头（含朝向与五官）、食物、按钮状态
+├── script.js               # 游戏状态机、定时步进、键盘输入、DOM 渲染
+├── scripts/
+│   └── deploy-ubuntu.sh    # Ubuntu 一键部署：apt 安装 Nginx/Git 等，克隆/更新代码并配置站点
+└── README.md               # 本说明文档
 ```
 
 三者通过相对路径引用（`href="style.css"`、`src="script.js"`），须保持与 `index.html` **同级目录**，否则打开页面会丢样式或脚本。
@@ -155,31 +159,198 @@ npx --yes serve -l 3000
 
 ---
 
-### 方式 D：自有服务器（Nginx 示例）
+### 方式 D：Ubuntu 24.04 服务器 + Nginx
 
-1. 将 `index.html`、`style.css`、`script.js` 拷贝到服务器目录，例如 `/var/www/snake-game/`。
-2. Nginx 配置片段示例：
+本游戏是纯静态资源，**不需要**安装 Node.js、npm、Python 运行时或任何项目级包；在服务器上只需一个 **Web 服务器**（下文用 **Nginx**）。
 
-   ```nginx
-   server {
-       listen 80;
-       server_name your.domain.example;
-       root /var/www/snake-game;
-       index index.html;
-       location / {
-           try_files $uri $uri/ =404;
-       }
-   }
-   ```
+#### D0：需要安装的软件（依赖一览）
 
-3. 检查配置并重载（命令因系统略有差异，**以下为常见 Linux 示例**）：
+| 软件 | 是否必须 | 用途 |
+|------|----------|------|
+| **nginx** | **推荐必装** | 对外提供 HTTP，托管 `index.html` / `style.css` / `script.js` |
+| **git** | 可选 | 在服务器上 `git clone` 拉代码时用 |
+| **ufw** | 可选 | Ubuntu 通常已带；用于放行 22/80 端口 |
+| **certbot** + **python3-certbot-nginx** | 可选 | 配置 HTTPS（Let’s Encrypt）时用 |
 
-   ```bash
-   sudo nginx -t
-   sudo systemctl reload nginx
-   ```
+**不需要安装：** `nodejs`、`npm`、`python3-pip`、本项目无任何 `apt install` 级别的「应用依赖包」。
 
-**无需**在服务器上安装 Node/npm 即可运行本游戏。
+#### D0.5：一键部署脚本（推荐）
+
+仓库内 **`scripts/deploy-ubuntu.sh`** 会在 **Ubuntu 20.04+ / 24.04** 上自动执行：
+
+| 步骤 | 说明 |
+|------|------|
+| `apt-get update` | 更新软件源索引 |
+| `apt-get install -y nginx git ca-certificates` | 安装 Web 服务器、克隆仓库用的 Git、HTTPS 校验根证书 |
+| `git clone` 或 `git pull` | 将站点文件放到 `/var/www/snake-game`（可用参数修改） |
+| 写入 `sites-available`、启用站点、禁用默认站点 | 配置 Nginx 并 `nginx -t` + `reload` |
+| 可选 `--with-ufw` | 额外执行 `apt install ufw` 并放行 SSH / HTTP(/HTTPS) |
+| 可选 `--with-ssl` | 额外执行 `apt install certbot python3-certbot-nginx` 并申请 Let’s Encrypt |
+
+**在服务器上执行（已克隆本仓库时）：**
+
+```bash
+cd /path/to/snake-game
+chmod +x scripts/deploy-ubuntu.sh
+sudo ./scripts/deploy-ubuntu.sh
+```
+
+**带防火墙（首次部署云服务器常用）：**
+
+```bash
+sudo ./scripts/deploy-ubuntu.sh --with-ufw
+```
+
+**HTTPS（需域名已解析到本机，并填写邮箱）：**
+
+```bash
+sudo ./scripts/deploy-ubuntu.sh --with-ufw --with-ssl --domain game.example.com --email you@example.com
+```
+
+**不克隆、只下载脚本后执行（将 `YOUR_USER` 换成你的 GitHub 用户名，或保持官方仓库地址）：**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/dangleungfai/snake-game/main/scripts/deploy-ubuntu.sh -o deploy-ubuntu.sh
+chmod +x deploy-ubuntu.sh
+sudo ./deploy-ubuntu.sh
+```
+
+> **说明：** 脚本只负责在**服务器上**安装系统包并拉取/更新代码；**向 GitHub 推送代码**仍需在开发机上使用 `git push`（见文末「克隆仓库与更新代码」），不要把服务器 SSH 密钥误用在脚本里自动推送。
+
+#### D1：更新软件源并安装 Nginx（在服务器上执行）
+
+使用 SSH 登录 Ubuntu 24.04 后：
+
+```bash
+sudo apt update
+sudo apt install -y nginx
+```
+
+确认服务已启用并运行：
+
+```bash
+sudo systemctl enable nginx
+sudo systemctl start nginx
+sudo systemctl status nginx --no-pager
+```
+
+浏览器访问 `http://服务器公网IP` 应看到 Nginx 默认欢迎页（说明 80 端口已通）。
+
+#### D2：（可选）安装 Git，用于在服务器上克隆仓库
+
+若不用 Git，可改用 `scp`/`rsync` 上传三个静态文件，可跳过本节。
+
+```bash
+sudo apt install -y git
+```
+
+克隆示例（将仓库地址换成你的）：
+
+```bash
+sudo mkdir -p /var/www
+cd /var/www
+sudo git clone https://github.com/dangleungfai/snake-game.git
+```
+
+#### D3：准备站点目录与文件权限
+
+**若已用 Git 克隆到 `/var/www/snake-game`**，确保站点根目录下至少有：`index.html`、`style.css`、`script.js`。
+
+**若手动上传文件**，可先建目录再拷贝：
+
+```bash
+sudo mkdir -p /var/www/snake-game
+# 在本地电脑执行（示例）：将三个文件拷到服务器
+# scp index.html style.css script.js user@服务器IP:/tmp/
+# 然后在服务器上：
+sudo mv /tmp/index.html /tmp/style.css /tmp/script.js /var/www/snake-game/
+```
+
+将目录所有者设为 Nginx 进程用户（Ubuntu 上一般为 `www-data`），避免权限问题：
+
+```bash
+sudo chown -R www-data:www-data /var/www/snake-game
+sudo chmod -R u=rwX,g=rX,o=rX /var/www/snake-game
+```
+
+#### D4：新建 Nginx 站点配置
+
+创建配置文件（文件名可自定，例如 `snake-game`）：
+
+```bash
+sudo nano /etc/nginx/sites-available/snake-game
+```
+
+写入以下内容（**把 `server_name` 改成你的域名或服务器 IP**；若暂时没有域名，可写 `_` 或本机 IP）：
+
+```nginx
+server {
+    listen 80;
+    listen [::]:80;
+    server_name your.domain.example;
+
+    root /var/www/snake-game;
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ =404;
+    }
+}
+```
+
+启用站点并禁用默认站点（可选，避免抢默认 `server`）：
+
+```bash
+sudo ln -sf /etc/nginx/sites-available/snake-game /etc/nginx/sites-enabled/
+sudo rm -f /etc/nginx/sites-enabled/default
+```
+
+校验配置并重载 Nginx：
+
+```bash
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+此时用浏览器访问 `http://你的域名或IP/` 应能打开贪吃蛇页面。
+
+#### D5：（可选）防火墙 UFW
+
+若已启用 UFW，需放行 SSH 与 HTTP（HTTPS 若后续配置再放行 443）：
+
+```bash
+sudo apt install -y ufw
+sudo ufw allow OpenSSH
+sudo ufw allow 'Nginx HTTP'
+sudo ufw enable
+sudo ufw status
+```
+
+#### D6：（可选）HTTPS：安装 Certbot 并申请证书
+
+**前提：** 域名已解析到该服务器公网 IP。
+
+```bash
+sudo apt install -y certbot python3-certbot-nginx
+sudo certbot --nginx -d your.domain.example
+```
+
+按提示完成验证；Certbot 会自动修改 Nginx 配置。证书续期由系统定时任务处理，可手动测试：
+
+```bash
+sudo certbot renew --dry-run
+```
+
+#### D7：仅用 Python 临时验证（不推荐生产环境）
+
+Ubuntu 24.04 默认带 **Python 3**，**无需 `pip install` 任何包**。仅作联调时可在项目目录执行：
+
+```bash
+cd /var/www/snake-game
+python3 -m http.server 8080 --bind 0.0.0.0
+```
+
+需在防火墙放行 `8080`，且生产环境请改用 Nginx。
 
 ---
 
@@ -193,7 +364,7 @@ cd snake-game
 修改后提交并推送：
 
 ```bash
-git add index.html style.css script.js README.md
+git add index.html style.css script.js README.md scripts/deploy-ubuntu.sh
 git commit -m "docs: 更新说明"
 git push origin main
 ```
